@@ -1,0 +1,78 @@
+name: Deploy Dev
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'development'
+
+jobs:
+  deploy:
+    needs: [ build-and-push ]
+    environment: dev
+    runs-on: ubuntu-20.04
+    steps:
+
+      - name: Notify slack deployment started
+        uses: voxmedia/github-action-slack-notify-build@v1
+        with:
+          channel_id: C02M0AYDRQ9
+          message_id: ${{ steps.slack.outputs.message_id }}
+          status: DEPLOY-STARTED-INFINISPAN (dev)
+          color: warning
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Check out prodops repository
+        uses: actions/checkout@master
+        with:
+          repository: Dehaat/prodops
+          ssh-key: ${{ secrets.PRODOPS_KEY }}
+          ref: 'master'
+
+      - name: Cache dependency # caching dependency will make our build faster.
+        uses: actions/cache@v2 # for more info checkout pip section documentation at https://github.com/actions/cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: install dependencies
+        run: |
+          python3 -m pip install -r requirements.txt
+          echo '${{ secrets.VAULT_PASSWORD }}' > ~/.vault_pass.txt
+
+      - name: Set short commit hash in env variables
+        run: echo "GITHUB_SHA_MERGE=$(echo $(git rev-parse --short ${{ github.sha }}))" >> $GITHUB_ENV
+
+      - name: run playbook
+        env:
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_AWS_SECRET_ACCESS_KEY}}
+          AWS_ACCESS_KEY_ID: ${{ secrets.STAGING_AWS_ACCESS_KEY_ID}}
+        run: |
+          cat ~/.vault_pass.txt
+          cd ansible/playbooks
+          ansible-playbook infinispan.yml --vault-password-file ~/.vault_pass.txt -e "deploy_env=dev"
+
+      - name: Notify slack success
+        if: success()
+        uses: voxmedia/github-action-slack-notify-build@v1
+        with:
+          channel_id: C02M0AYDRQ9
+          message_id: ${{ steps.slack.outputs.message_id }}
+          status: DEPLOY-SUCCESS-INFINISPAN (dev)
+          color: good
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Notify slack failure
+        if: failure()
+        uses: voxmedia/github-action-slack-notify-build@v1
+        with:
+          channel_id: C02M0AYDRQ9
+          message_id: ${{ steps.slack.outputs.message_id }}
+          status: DEPLOY-FAILED-INFINISPAN (dev)
+          color: danger
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
