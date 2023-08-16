@@ -48,4 +48,4 @@ Configure your Infinispan cluster by specifying values in the `deploy.*` section
 | `deploy.infinispan` | Infinispan Server configuration. | - | You should not change the default socket bindings or the security realm and endpoints named "metrics". Modifying these default properties can result in unexpected behavior and loss of service. |
 
 
-### TEST
+
